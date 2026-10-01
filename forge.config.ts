@@ -17,7 +17,7 @@ const STRINGS = {
   author: "Chillboio Studios",
   name: "DawnChat",
   execName: "dawnchat-desktop",
-  description: "Open source user-first chat platform.",
+  description: "User-first chat platform.",
 };
 
 const ASSET_DIR = "assets/desktop";

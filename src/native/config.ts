@@ -74,8 +74,8 @@ const store = new Store({
  * Shim for `electron-store` because typings are broken
  */
 class Config {
-  sync() {
-    mainWindow.webContents.send("config", {
+  getAll(): DesktopConfig {
+    return {
       firstLaunch: this.firstLaunch,
       customFrame: this.customFrame,
       minimiseToTray: this.minimiseToTray,
@@ -84,7 +84,11 @@ class Config {
       hardwareAcceleration: this.hardwareAcceleration,
       discordRpc: this.discordRpc,
       windowState: this.windowState,
-    });
+    };
+  }
+
+  sync() {
+    mainWindow.webContents.send("config", this.getAll());
   }
 
   get firstLaunch() {
@@ -210,6 +214,10 @@ class Config {
 }
 
 export const config = new Config();
+
+ipcMain.on("get-config", (event) => {
+  event.returnValue = config.getAll();
+});
 
 ipcMain.on("config", (_, newConfig: Partial<DesktopConfig>) => {
   console.info("Received new configuration", newConfig);

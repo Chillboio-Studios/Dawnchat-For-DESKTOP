@@ -23,7 +23,7 @@ export let mainWindow: BrowserWindow;
 export const BUILD_URL = new URL(
   app.commandLine.hasSwitch("force-server")
     ? app.commandLine.getSwitchValue("force-server")
-    : /*MAIN_WINDOW_VITE_DEV_SERVER_URL ??*/ "https://app.dawn-chat.com",
+    : /*MAIN_WINDOW_VITE_DEV_SERVER_URL ??*/ "https://chat.dawn-chat.com",
 );
 
 // internal window state
@@ -67,6 +67,39 @@ export function createMainWindow() {
   // hide the options
   mainWindow.setMenu(null);
 
+  mainWindow.webContents.on(
+    "did-start-navigation",
+    (event, url, _inPlace, isMainFrame) => {
+      if (isMainFrame) {
+        console.info(`[UI] Navigating to ${url}`);
+      }
+    },
+  );
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      if (isMainFrame) {
+        console.error(
+          `[UI] Failed to load ${validatedURL} (${errorCode}): ${errorDescription}`,
+        );
+      }
+    },
+  );
+
+  mainWindow.webContents.on("console-message", (event) => {
+    const { level, message, lineNumber, sourceId } = event;
+    if (level === "error" || level === "warning") {
+      console.error(
+        `[UI] Renderer console ${level} (${sourceId}:${lineNumber}): ${message}`,
+      );
+    }
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    console.info(`[UI] Finished loading ${mainWindow.webContents.getURL()}`);
+  });
+
   // restore last position if it was moved previously
   if (config.windowState.x > 0 || config.windowState.y > 0) {
     mainWindow.setPosition(
@@ -89,9 +122,12 @@ export function createMainWindow() {
   }
 
   // load the entrypoint
-  mainWindow
-    .loadURL(BUILD_URL.toString())
-    .then(() => mainWindow.webContents.reload());
+  mainWindow.loadURL(BUILD_URL.toString()).catch((error: unknown) => {
+    console.error(
+      `[UI] Failed to start loading ${BUILD_URL.toString()}`,
+      error,
+    );
+  });
 
   // minimise window to tray
   mainWindow.on("close", (event) => {

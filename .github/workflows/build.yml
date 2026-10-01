@@ -66,6 +66,9 @@ jobs:
           - target: macOS
             runner: macos-latest
             image: ""
+          - target: Flatpak
+            runner: ubuntu-latest
+            image: ""
           - target: AppImage
             runner: ubuntu-latest
             image: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
@@ -96,11 +99,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package desktop app
-        if: ${{ !inputs.publish_release || matrix.target == 'AppImage' }}
+        if: ${{ matrix.target == 'AppImage' || (matrix.target != 'Flatpak' && !inputs.publish_release) }}
         run: pnpm run package
 
       - name: Install Flatpak tooling and runtimes
-        if: ${{ inputs.publish_release && matrix.target == 'Linux' }}
+        if: ${{ matrix.target == 'Flatpak' || (inputs.publish_release && matrix.target == 'Linux') }}
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
@@ -109,7 +112,11 @@ jobs:
           flatpak install --user -y flathub org.electronjs.Electron2.BaseApp//stable
 
       - name: Make release packages
-        if: ${{ inputs.publish_release && matrix.target != 'AppImage' }}
+        if: ${{ inputs.publish_release && matrix.target != 'AppImage' && matrix.target != 'Flatpak' }}
+        run: pnpm run make
+
+      - name: Build Flatpak
+        if: matrix.target == 'Flatpak'
         run: pnpm run make
 
       - name: Archive Linux package for AppImage
@@ -139,7 +146,7 @@ jobs:
         run: /bin/sh ./.github/build/appimage/make-appimage.sh
 
       - name: Upload packaged app artifact
-        if: matrix.target != 'AppImage'
+        if: matrix.target != 'AppImage' && matrix.target != 'Flatpak'
         uses: actions/upload-artifact@v6
         with:
           name: DawnChat-${{ matrix.target }}
@@ -153,6 +160,13 @@ jobs:
           path: |
             out
             dist
+
+      - name: Upload Flatpak artifact
+        if: matrix.target == 'Flatpak'
+        uses: actions/upload-artifact@v6
+        with:
+          name: DawnChat-${{ matrix.target }}
+          path: out/make/flatpak/*.flatpak
 
   release:
     name: Create release from all build artifacts
@@ -184,6 +198,8 @@ jobs:
             target=${artifact##*/}
             if [ "$target" = "DawnChat-AppImage" ]; then
               source_dir="$artifact/dist"
+            elif [ "$target" = "DawnChat-Flatpak" ]; then
+              source_dir="$artifact"
             else
               source_dir="$artifact/make"
             fi
@@ -194,6 +210,9 @@ jobs:
             fi
 
             while IFS= read -r -d '' file; do
+              if [ "$target" = "DawnChat-Linux" ] && [[ "$file" == *.flatpak ]]; then
+                continue
+              fi
               asset_name=${file##*/}
               if [ -e "release-assets/$asset_name" ]; then
                 echo "Duplicate release filename: $asset_name" >&2
