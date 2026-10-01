@@ -21,9 +21,6 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout assets
-        run: mise assets
-
       - name: Install dependencies
         run: mise install:frozen
 
@@ -32,15 +29,15 @@ jobs:
       
       - name: Tar gz
         run : |
-          cd ./out/Stoat-linux-x64
-          tar -zcvf ../../Stoat.tar.gz .
+          cd ./out/DawnChat-linux-x64
+          tar -zcvf ../../DawnChat.tar.gz .
           cd ../..
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: stoat-linux-package-x64
-          path: ./Stoat.tar.gz
+          name: dawnchat-linux-package-x64
+          path: ./DawnChat.tar.gz
 
   build-appimage:
     needs: [build]
@@ -54,19 +51,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Checkout assets
-        run: |
-          git config --global --add safe.directory $(pwd)
-          git -c submodule."assets".update=checkout submodule update --init assets
-
       - name: Install Dependencies
         run: /bin/sh ./.github/build/appimage/get-dependencies.sh
 
       - name: Download Artifact
         uses: actions/download-artifact@v7
         with:
-          name: stoat-linux-package-x64
-          path: /tmp/stoat
+          name: dawnchat-linux-package-x64
+          path: /tmp/dawnchat
 
       - name: Extract Artifact
         run: /bin/sh ./.github/build/appimage/extract-artifact.sh

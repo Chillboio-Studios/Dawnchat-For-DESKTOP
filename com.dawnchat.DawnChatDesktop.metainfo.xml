@@ -1,27 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop">
-  <id>chat.stoat.StoatDesktop</id>
-  <launchable type="desktop-id">chat.stoat.StoatDesktop.desktop</launchable>
-  <name>Stoat</name>
-  <developer id="chat.stoat">
-    <name>Revolt Platforms Ltd</name>
+  <id>com.dawnchat.DawnChatDesktop</id>
+  <launchable type="desktop-id">com.dawnchat.DawnChatDesktop.desktop</launchable>
+  <name>DawnChat</name>
+  <developer id="com.dawnchat">
+    <name>Chillboio Studios</name>
+    <url>https://www.chillboiostudios.com</url>
   </developer>
   <summary>Open source, user-first chat platform</summary>
+  <categories>
+    <category>Network</category>
+  </categories>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>AGPL-3.0</project_license>
-  <icon type="remote" height="256" width="256">
-    https://raw.githubusercontent.com/stoatchat/assets/f106946659af67ad4f008588ac51570029b2fd47/desktop/icon.png</icon>
+  <icon type="stock">com.dawnchat.DawnChatDesktop</icon>
   <description>
-    <p>Stoat is an open source, user-first chat platform. Send messages, share
+    <p>DawnChat is an open source, user-first chat platform. Send messages, share
       images, mention users, and join voice channels — all from a native desktop
       application.</p>
   </description>
-  <screenshots>
-    <screenshot type="default">
-      <caption>Main window</caption>
-      <image>https://raw.githubusercontent.com/stoatchat/for-desktop/b57faa2c59865fea15a879c9a9304271067d0020/screenshot.png</image>
-    </screenshot>
-  </screenshots>
   <releases>
     <release date="2026-02-14" version="1.2.0">
       <description>
@@ -50,9 +47,7 @@
       </description>
     </release>
   </releases>
-  <url type="bugtracker">https://github.com/stoatchat/for-desktop/issues</url>
-  <url type="homepage">https://stoat.chat</url>
-  <url type="vcs-browser">https://github.com/stoatchat/for-desktop</url>
+  <url type="homepage">https://dawn-chat.com</url>
   <content_rating type="oars-1.1">
     <content_attribute id="social-chat">intense</content_attribute>
     <content_attribute id="social-info">intense</content_attribute>

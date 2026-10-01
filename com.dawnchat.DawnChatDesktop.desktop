@@ -1,11 +1,11 @@
 [Desktop Entry]
-Name=Stoat
+Name=DawnChat
 Comment=Open source, user-first chat platform
-Exec=stoat-desktop
+Exec=dawnchat-desktop
 Terminal=false
 Type=Application
-Icon=chat.stoat.StoatDesktop
+Icon=com.dawnchat.DawnChatDesktop
 Categories=Network;InstantMessaging
-StartupWMClass=stoat-desktop
+StartupWMClass=dawnchat-desktop
 X-Desktop-File-Install-Version=0.26
-X-Flatpak=chat.stoat.StoatDesktop
+X-Flatpak=com.dawnchat.DawnChatDesktop

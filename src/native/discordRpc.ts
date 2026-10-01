@@ -16,14 +16,14 @@ export async function initDiscordRpc() {
 
     rpc.on("ready", () =>
       rpc.setActivity({
-        state: "stoat.chat",
+        state: "app.dawn-chat.com",
         details: "Chatting with others",
         largeImageKey: "qr",
-        largeImageText: "Join Stoat!",
+        largeImageText: "Join DawnChat!",
         buttons: [
           {
-            label: "Join Stoat",
-            url: "https://stoat.chat/",
+            label: "Join DawnChat",
+            url: "https://app.dawn-chat.com",
           },
         ],
       }),

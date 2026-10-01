@@ -13,9 +13,9 @@ import path from "node:path";
 // import { globSync } from "node:fs";
 
 const STRINGS = {
-  author: "Revolt Platforms LTD",
-  name: "Stoat",
-  execName: "stoat-desktop",
+  author: "Chillboio Studios",
+  name: "DawnChat",
+  execName: "dawnchat-desktop",
   description: "Open source user-first chat platform.",
 };
 
@@ -29,18 +29,18 @@ const makers: ForgeConfig["makers"] = [
     name: STRINGS.name,
     authors: STRINGS.author,
     // todo: hoist this
-    iconUrl: `https://stoat.chat/app/assets/icon-DUSNE-Pb.ico`,
+    iconUrl: `https://app.dawn-chat.com/favicon.ico`,
     // todo: loadingGif
     setupIcon: `${ASSET_DIR}/icon.ico`,
     description: STRINGS.description,
     exe: `${STRINGS.execName}.exe`,
     setupExe: `${STRINGS.execName}-setup.exe`,
-    copyright: "Copyright (C) 2025 Revolt Platforms LTD",
+    copyright: "Copyright (C) 2026 Chillboio Studios (www.chillboiostudios.com)",
   }),
   new MakerZIP({}),
   new MakerFlatpak({
     options: {
-      id: "chat.stoat.StoatDesktop",
+      id: "com.dawnchat.DawnChatDesktop",
       description: STRINGS.description,
       productName: STRINGS.name,
       productDescription: STRINGS.description,
@@ -172,8 +172,8 @@ const config: ForgeConfig = {
   publishers: [
     new PublisherGithub({
       repository: {
-        owner: "stoatchat",
-        name: "for-desktop",
+        owner: "Chillboio-Studios-Internal",
+        name: "dawnchat-for-desktop",
       },
     }),
   ],
