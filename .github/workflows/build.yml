@@ -1,41 +1,189 @@
-name: Build & Lint
+name: CI
 
 on:
   push:
     branches:
       - main
-    paths-ignore:
-      - ".github/**"
-      - "!.github/workflows/build.yml"
-      - ".vscode/**"
-      - ".gitignore"
-      - "README.md"
   pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub release
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build App
+  quality:
+    name: Lint and format
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Check out source
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Setup Mise
-        uses: immich-app/devtools/actions/use-mise@7b8610a904d57da241e4ddba17fa62b62b15aed4 # use-mise-action-v2.0.2
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: 26.2.0
+          cache: pnpm
 
       - name: Install dependencies
-        run: mise install:frozen
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: mise lint
+        run: pnpm run lint
 
-      - name: Format
-        run: mise format
+      - name: Check formatting
+        run: pnpm run fmt
 
-      - name: Build
-        run: mise build
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.publish_release && '24' || '26.2.0' }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Package desktop app
+        if: ${{ !inputs.publish_release }}
+        run: pnpm run package
+
+      - name: Install Flatpak tooling and runtimes
+        if: ${{ inputs.publish_release && matrix.os == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+          flatpak install --user -y flathub org.electronjs.Electron2.BaseApp//stable
+
+      - name: Publish GitHub release
+        if: ${{ inputs.publish_release }}
+        run: pnpm run publish
+        env:
+          PLATFORM: ${{ matrix.os }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Archive Linux package for AppImage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          tar -czf DawnChat.tar.gz -C out/DawnChat-linux-x64 .
+          node -p "require('./package.json').version" > release-version.txt
+
+      - name: Upload Linux package for AppImage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v6
+        with:
+          name: dawnchat-linux-package-x64
+          path: |
+            DawnChat.tar.gz
+            release-version.txt
+
+  appimage:
+    name: Build AppImage
+    needs: package
+    if: ${{ always() && needs.package.result != 'cancelled' }}
+    runs-on: ubuntu-latest
+    container: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
+
+    steps:
+      - name: Prepare container
+        uses: pkgforge-dev/anylinux-setup-action@0964f2258d6c93d1391359978dde081fd8b3c6af # v2
+
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Install AppImage dependencies
+        run: /bin/sh ./.github/build/appimage/get-dependencies.sh
+
+      - name: Download Linux package
+        uses: actions/download-artifact@v7
+        with:
+          name: dawnchat-linux-package-x64
+          path: /tmp/dawnchat
+
+      - name: Read release version
+        if: ${{ inputs.publish_release }}
+        id: version
+        run: echo "value=$(cat /tmp/dawnchat/release-version.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare AppDir
+        run: /bin/sh ./.github/build/appimage/extract-artifact.sh
+        env:
+          BUILD_ARCH: x64
+          BUILD_VERSION: ${{ inputs.publish_release && steps.version.outputs.value || 'nightly' }}
+
+      - name: Build and test AppImage
+        run: /bin/sh ./.github/build/appimage/make-appimage.sh
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v6
+        with:
+          name: AppImage-x64
+          path: dist
+
+  publish-appimage:
+    name: Add AppImage to release
+    if: ${{ inputs.publish_release && needs.package.result == 'success' }}
+    needs: [package, appimage]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v7
+        with:
+          name: AppImage-x64
+          path: dist
+
+      - name: Upload AppImage to GitHub release
+        run: |
+          version=$(node -p "require('./package.json').version")
+          gh release upload "v${version}" dist/*.AppImage* --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
