@@ -69,9 +69,6 @@ jobs:
           - target: AppImage
             runner: ubuntu-latest
             image: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
-    permissions:
-      contents: write
-
     steps:
       - name: Prepare AppImage container
         if: matrix.target == 'AppImage'
@@ -111,12 +108,9 @@ jobs:
           flatpak install --user -y flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
           flatpak install --user -y flathub org.electronjs.Electron2.BaseApp//stable
 
-      - name: Publish GitHub release
+      - name: Make release packages
         if: ${{ inputs.publish_release && matrix.target != 'AppImage' }}
-        run: pnpm run publish
-        env:
-          PLATFORM: ${{ matrix.runner }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm run make
 
       - name: Archive Linux package for AppImage
         if: matrix.target == 'AppImage'
@@ -144,17 +138,26 @@ jobs:
         if: matrix.target == 'AppImage'
         run: /bin/sh ./.github/build/appimage/make-appimage.sh
 
-      - name: Upload AppImage
+      - name: Upload packaged app artifact
+        if: matrix.target != 'AppImage'
+        uses: actions/upload-artifact@v6
+        with:
+          name: DawnChat-${{ matrix.target }}
+          path: out
+
+      - name: Upload AppImage artifact
         if: matrix.target == 'AppImage'
         uses: actions/upload-artifact@v6
         with:
-          name: AppImage-x64
-          path: dist
+          name: DawnChat-${{ matrix.target }}
+          path: |
+            out
+            dist
 
-  publish-appimage:
-    name: Add AppImage to release
+  release:
+    name: Create release from all build artifacts
     if: ${{ inputs.publish_release }}
-    needs: package
+    needs: [quality, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -168,15 +171,51 @@ jobs:
         with:
           node-version: 24
 
-      - name: Download AppImage
+      - name: Download all build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: AppImage-x64
-          path: dist
+          pattern: DawnChat-*
+          path: artifacts
 
-      - name: Upload AppImage to GitHub release
+      - name: Collect individual release files
+        run: |
+          mkdir -p release-assets
+          for artifact in artifacts/DawnChat-*; do
+            target=${artifact##*/}
+            if [ "$target" = "DawnChat-AppImage" ]; then
+              source_dir="$artifact/dist"
+            else
+              source_dir="$artifact/make"
+            fi
+
+            if [ ! -d "$source_dir" ]; then
+              echo "Missing release output: $source_dir" >&2
+              exit 1
+            fi
+
+            while IFS= read -r -d '' file; do
+              asset_name=${file##*/}
+              if [ -e "release-assets/$asset_name" ]; then
+                echo "Duplicate release filename: $asset_name" >&2
+                exit 1
+              fi
+              cp "$file" "release-assets/$asset_name"
+            done < <(find "$source_dir" -type f -print0)
+          done
+
+          if [ -z "$(find release-assets -type f -print -quit)" ]; then
+            echo "No release files were collected" >&2
+            exit 1
+          fi
+
+      - name: Create GitHub release
         run: |
           version=$(node -p "require('./package.json').version")
-          gh release upload "v${version}" dist/*.AppImage* --clobber
+          tag="v${version}"
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "$tag" \
+            --generate-notes \
+            release-assets/*
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

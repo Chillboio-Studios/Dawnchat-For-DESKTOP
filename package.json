@@ -1,9 +1,9 @@
 {
   "name": "dawnchat-desktop",
   "productName": "DawnChat",
-  "version": "DC-0.0.1",
+  "version": "0.0.1",
   "main": ".vite/build/main.js",
-  "repository": "Chillboio-Studios-Internal/dawnchat-for-desktop",
+  "repository": "https://github.com/Chillboio-Studios/Dawnchat-For-DESKTOP",
   "scripts": {
     "start": "electron-forge start -- --no-sandbox",
     "package": "electron-forge package",

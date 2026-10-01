@@ -21,7 +21,7 @@ const STRINGS = {
 };
 
 const ASSET_DIR = "assets/desktop";
-const PACKAGER_VERSION = packageJson.version.replace(/^DC-/, "");
+const PACKAGER_VERSION = packageJson.version;
 
 /**
  * Build targets for the desktop app
@@ -176,8 +176,8 @@ const config: ForgeConfig = {
   publishers: [
     new PublisherGithub({
       repository: {
-        owner: "Chillboio-Studios-Internal",
-        name: "dawnchat-for-desktop",
+        owner: "Chillboio-Studios",
+        name: "Dawnchat-For-DESKTOP",
       },
     }),
   ],
