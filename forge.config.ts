@@ -9,6 +9,7 @@ import type { ForgeConfig } from "@electron-forge/shared-types";
 import { FuseV1Options, FuseVersion } from "@electron/fuses";
 import fs from "node:fs";
 import path from "node:path";
+import packageJson from "./package.json";
 
 // import { globSync } from "node:fs";
 
@@ -20,6 +21,7 @@ const STRINGS = {
 };
 
 const ASSET_DIR = "assets/desktop";
+const PACKAGER_VERSION = packageJson.version.replace(/^DC-/, "");
 
 /**
  * Build targets for the desktop app
@@ -100,6 +102,8 @@ const config: ForgeConfig = {
     asar: true,
     name: STRINGS.name,
     executableName: STRINGS.execName,
+    appVersion: PACKAGER_VERSION,
+    buildVersion: PACKAGER_VERSION,
     icon:
       process.platform === "darwin"
         ? `${ASSET_DIR}/icon.icon`

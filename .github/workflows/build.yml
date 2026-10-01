@@ -59,13 +59,13 @@ jobs:
         include:
           - target: Linux
             runner: ubuntu-latest
-            image: ''
+            image: ""
           - target: Windows
             runner: windows-latest
-            image: ''
+            image: ""
           - target: macOS
             runner: macos-latest
-            image: ''
+            image: ""
           - target: AppImage
             runner: ubuntu-latest
             image: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
@@ -129,7 +129,9 @@ jobs:
       - name: Read AppImage version
         if: matrix.target == 'AppImage'
         id: version
-        run: echo "value=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Prepare AppDir
         if: matrix.target == 'AppImage'
