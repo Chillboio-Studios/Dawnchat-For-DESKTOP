@@ -50,23 +50,41 @@ jobs:
         run: pnpm run fmt
 
   package:
-    name: Package (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image || fromJSON('null') }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+        include:
+          - target: Linux
+            runner: ubuntu-latest
+            image: ''
+          - target: Windows
+            runner: windows-latest
+            image: ''
+          - target: macOS
+            runner: macos-latest
+            image: ''
+          - target: AppImage
+            runner: ubuntu-latest
+            image: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
     permissions:
       contents: write
 
     steps:
+      - name: Prepare AppImage container
+        if: matrix.target == 'AppImage'
+        uses: pkgforge-dev/anylinux-setup-action@0964f2258d6c93d1391359978dde081fd8b3c6af # v2
+
       - name: Check out source
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Install AppImage build tools
+        if: matrix.target == 'AppImage'
+        run: pacman -Syu --noconfirm base-devel python nodejs npm pipewire
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -81,11 +99,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Package desktop app
-        if: ${{ !inputs.publish_release }}
+        if: ${{ !inputs.publish_release || matrix.target == 'AppImage' }}
         run: pnpm run package
 
       - name: Install Flatpak tooling and runtimes
-        if: ${{ inputs.publish_release && matrix.os == 'ubuntu-latest' }}
+        if: ${{ inputs.publish_release && matrix.target == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
@@ -94,65 +112,38 @@ jobs:
           flatpak install --user -y flathub org.electronjs.Electron2.BaseApp//stable
 
       - name: Publish GitHub release
-        if: ${{ inputs.publish_release }}
+        if: ${{ inputs.publish_release && matrix.target != 'AppImage' }}
         run: pnpm run publish
         env:
-          PLATFORM: ${{ matrix.os }}
+          PLATFORM: ${{ matrix.runner }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Archive Linux package for AppImage
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          tar -czf DawnChat.tar.gz -C out/DawnChat-linux-x64 .
-          node -p "require('./package.json').version" > release-version.txt
+        if: matrix.target == 'AppImage'
+        run: mkdir -p /tmp/dawnchat && tar -czf /tmp/dawnchat/DawnChat.tar.gz -C out/DawnChat-linux-x64 .
 
-      - name: Upload Linux package for AppImage
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v6
-        with:
-          name: dawnchat-linux-package-x64
-          path: |
-            DawnChat.tar.gz
-            release-version.txt
-
-  appimage:
-    name: Build AppImage
-    needs: package
-    if: ${{ always() && needs.package.result != 'cancelled' }}
-    runs-on: ubuntu-latest
-    container: ghcr.io/pkgforge-dev/archlinux:v2026.05.15
-
-    steps:
-      - name: Prepare container
-        uses: pkgforge-dev/anylinux-setup-action@0964f2258d6c93d1391359978dde081fd8b3c6af # v2
-
-      - name: Check out source
-        uses: actions/checkout@v6
-
-      - name: Install AppImage dependencies
+      - name: Install AppImage runtime dependencies
+        if: matrix.target == 'AppImage'
         run: /bin/sh ./.github/build/appimage/get-dependencies.sh
 
-      - name: Download Linux package
-        uses: actions/download-artifact@v7
-        with:
-          name: dawnchat-linux-package-x64
-          path: /tmp/dawnchat
-
-      - name: Read release version
-        if: ${{ inputs.publish_release }}
+      - name: Read AppImage version
+        if: matrix.target == 'AppImage'
         id: version
-        run: echo "value=$(cat /tmp/dawnchat/release-version.txt)" >> "$GITHUB_OUTPUT"
+        run: echo "value=$(node -p 'require(\"./package.json\").version')" >> "$GITHUB_OUTPUT"
 
       - name: Prepare AppDir
+        if: matrix.target == 'AppImage'
         run: /bin/sh ./.github/build/appimage/extract-artifact.sh
         env:
           BUILD_ARCH: x64
           BUILD_VERSION: ${{ inputs.publish_release && steps.version.outputs.value || 'nightly' }}
 
       - name: Build and test AppImage
+        if: matrix.target == 'AppImage'
         run: /bin/sh ./.github/build/appimage/make-appimage.sh
 
       - name: Upload AppImage
+        if: matrix.target == 'AppImage'
         uses: actions/upload-artifact@v6
         with:
           name: AppImage-x64
@@ -160,8 +151,8 @@ jobs:
 
   publish-appimage:
     name: Add AppImage to release
-    if: ${{ inputs.publish_release && needs.package.result == 'success' }}
-    needs: [package, appimage]
+    if: ${{ inputs.publish_release }}
+    needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
