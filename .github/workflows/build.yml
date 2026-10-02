@@ -166,7 +166,8 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: DawnChat-${{ matrix.target }}
-          path: out/make/flatpak/*.flatpak
+          path: out/make/flatpak/**/*.flatpak
+          if-no-files-found: error
 
   release:
     name: Create release from all build artifacts
