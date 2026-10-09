@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
+  #push:
+    #branches:
+      #- main
   pull_request:
   workflow_dispatch:
     inputs:
@@ -153,42 +153,69 @@ jobs:
           APP_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep -o '"Apple Distribution: [^"]*"' | head -n 1 | tr -d '"')
           INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep -o '"3rd Party Mac Developer Installer: [^"]*"' | head -n 1 | tr -d '"')
 
-          if [ -z "$APP_IDENTITY" ] || [ -z "$INSTALLER_IDENTITY" ]; then
-            echo "::error::Missing required signing identities. Need both Apple Distribution and 3rd Party Mac Developer Installer."
-            security find-identity -v "$KEYCHAIN_PATH"
-            exit 1
-          fi
-
           echo "App Signing Identity: $APP_IDENTITY"
           echo "Installer Signing Identity: $INSTALLER_IDENTITY"
 
-          # 4. Install the provisioning profile into the app bundle
+          # 4. Embed the provisioning profile into the app bundle
           echo "$MACOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$APP_PATH/Contents/embedded.provisionprofile"
 
-          # 5. Deep-sign all child components and frameworks with child.plist (Sandboxed)
-          echo "Signing helper applications, libraries, and frameworks..."
-          find "$APP_PATH/Contents/Frameworks" -name "*.dylib" -o -name "*.framework" | while read -r item; do
+          # 5. Sign nested framework helper executables FIRST (Inside-Out)
+          CRASHPAD="$APP_PATH/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler"
+          if [ -f "$CRASHPAD" ]; then
+            echo "Signing chrome_crashpad_handler..."
             codesign --force --verify --verbose --sign "$APP_IDENTITY" \
               --keychain "$KEYCHAIN_PATH" \
               --entitlements entitlements/child.plist \
-              --options runtime "$item" || true
-          done
+              "$CRASHPAD"
+          fi
 
-          find "$APP_PATH/Contents/Frameworks" -name "*.app" | while read -r helper; do
+          SHIPIT="$APP_PATH/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt"
+          if [ -f "$SHIPIT" ]; then
+            echo "Signing ShipIt..."
             codesign --force --verify --verbose --sign "$APP_IDENTITY" \
               --keychain "$KEYCHAIN_PATH" \
               --entitlements entitlements/child.plist \
-              --options runtime "$helper"
+              "$SHIPIT"
+          fi
+
+          # 6. Sign dylibs and libraries
+          find "$APP_PATH/Contents/Frameworks" -name "*.dylib" | while read -r dylib; do
+            codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements entitlements/child.plist \
+              "$dylib"
           done
 
-          # 6. Sign the main .app bundle with parent.plist
-          echo "Signing main application bundle..."
+          # 7. Sign .framework bundles
+          for framework in "$APP_PATH/Contents/Frameworks"/*.framework; do
+            if [ -d "$framework" ]; then
+              echo "Signing framework: $framework"
+              codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+                --keychain "$KEYCHAIN_PATH" \
+                --entitlements entitlements/child.plist \
+                "$framework"
+            fi
+          done
+
+          # 8. Sign helper apps
+          for helper in "$APP_PATH/Contents/Frameworks"/*.app; do
+            if [ -d "$helper" ]; then
+              echo "Signing helper: $helper"
+              codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+                --keychain "$KEYCHAIN_PATH" \
+                --entitlements entitlements/child.plist \
+                "$helper"
+            fi
+          done
+
+          # 9. Sign the main application bundle
+          echo "Signing main bundle: $APP_PATH"
           codesign --force --verify --verbose --sign "$APP_IDENTITY" \
             --keychain "$KEYCHAIN_PATH" \
             --entitlements entitlements/parent.plist \
-            --options runtime "$APP_PATH"
+            "$APP_PATH"
 
-          # 7. Package and sign the .pkg using productbuild
+          # 10. Package and sign the .pkg using productbuild
           mkdir -p out/make
           PKG_PATH="out/make/DawnChat.pkg"
 
@@ -198,7 +225,7 @@ jobs:
             --keychain "$KEYCHAIN_PATH" \
             "$PKG_PATH"
 
-          # 8. Setup App Store Connect API Key (.p8)
+          # 11. Setup App Store Connect API Key (.p8)
           mkdir -p ~/.appstoreconnect/private_keys
           KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
 
@@ -209,7 +236,7 @@ jobs:
           fi
           trap 'rm -f "$KEY_PATH"; security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true' EXIT
 
-          # 9. Validate and upload package to App Store Connect
+          # 12. Validate and upload package to App Store Connect
           echo "Validating package..."
           xcrun altool --validate-app \
             -f "$PKG_PATH" \

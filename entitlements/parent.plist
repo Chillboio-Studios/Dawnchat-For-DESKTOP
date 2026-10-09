@@ -2,12 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Enables Sandbox -->
     <key>com.apple.security.app-sandbox</key>
     <true/>
+
+    <!-- Required for TestFlight (TeamID.BundleID) -->
+    <key>com.apple.application-identifier</key>
+    <string>UH2QXB6CKM.com.chillboiostudios.dawnchat</string>
+
     <key>com.apple.security.application-groups</key>
     <array>
         <string>UH2QXB6CKM.com.chillboiostudios.dawnchat</string>
     </array>
+
+    <!-- Standard Permissions for Electron network apps -->
     <key>com.apple.security.network.client</key>
     <true/>
     <key>com.apple.security.network.server</key>
