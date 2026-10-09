@@ -116,12 +116,13 @@ jobs:
         run: pnpm run make
 
       # --- macOS: Build signed .pkg and upload to App Store Connect ---
-      # --- macOS: Build signed .pkg and upload to App Store Connect ---
+      # --- macOS: Build, sign, and upload macOS package to App Store Connect ---
       - name: Build, sign, and upload macOS package to App Store Connect
         if: ${{ inputs.publish_release && matrix.target == 'macOS' }}
         env:
           MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
           MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
@@ -148,17 +149,46 @@ jobs:
           fi
           echo "Found app bundle at: $APP_PATH"
 
-          # 3. Find the INSTALLER signing identity (required by productbuild)
+          # 3. Find signing identities
+          APP_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep -o '"Apple Distribution: [^"]*"' | head -n 1 | tr -d '"')
           INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep -o '"3rd Party Mac Developer Installer: [^"]*"' | head -n 1 | tr -d '"')
 
-          if [ -z "$INSTALLER_IDENTITY" ]; then
-            echo "::error::Could not find '3rd Party Mac Developer Installer' certificate in keychain. Ensure your .p12 includes the Mac Installer Distribution certificate."
+          if [ -z "$APP_IDENTITY" ] || [ -z "$INSTALLER_IDENTITY" ]; then
+            echo "::error::Missing required signing identities. Need both Apple Distribution and 3rd Party Mac Developer Installer."
             security find-identity -v "$KEYCHAIN_PATH"
             exit 1
           fi
-          echo "Using installer signing identity: $INSTALLER_IDENTITY"
 
-          # 4. Build and sign the .pkg into out/make
+          echo "App Signing Identity: $APP_IDENTITY"
+          echo "Installer Signing Identity: $INSTALLER_IDENTITY"
+
+          # 4. Install the provisioning profile into the app bundle
+          echo "$MACOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$APP_PATH/Contents/embedded.provisionprofile"
+
+          # 5. Deep-sign all child components and frameworks with child.plist (Sandboxed)
+          echo "Signing helper applications, libraries, and frameworks..."
+          find "$APP_PATH/Contents/Frameworks" -name "*.dylib" -o -name "*.framework" | while read -r item; do
+            codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements entitlements/child.plist \
+              --options runtime "$item" || true
+          done
+
+          find "$APP_PATH/Contents/Frameworks" -name "*.app" | while read -r helper; do
+            codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+              --keychain "$KEYCHAIN_PATH" \
+              --entitlements entitlements/child.plist \
+              --options runtime "$helper"
+          done
+
+          # 6. Sign the main .app bundle with parent.plist
+          echo "Signing main application bundle..."
+          codesign --force --verify --verbose --sign "$APP_IDENTITY" \
+            --keychain "$KEYCHAIN_PATH" \
+            --entitlements entitlements/parent.plist \
+            --options runtime "$APP_PATH"
+
+          # 7. Package and sign the .pkg using productbuild
           mkdir -p out/make
           PKG_PATH="out/make/DawnChat.pkg"
 
@@ -168,7 +198,7 @@ jobs:
             --keychain "$KEYCHAIN_PATH" \
             "$PKG_PATH"
 
-          # 5. Setup App Store Connect API Key (.p8)
+          # 8. Setup App Store Connect API Key (.p8)
           mkdir -p ~/.appstoreconnect/private_keys
           KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
 
@@ -177,11 +207,9 @@ jobs:
           else
             echo "$APPLE_API_PRIVATE_KEY" | base64 --decode > "$KEY_PATH"
           fi
-
-          # Clean up private key and keychain on step exit
           trap 'rm -f "$KEY_PATH"; security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true' EXIT
 
-          # 6. Validate and upload package to App Store Connect
+          # 9. Validate and upload package to App Store Connect
           echo "Validating package..."
           xcrun altool --validate-app \
             -f "$PKG_PATH" \
