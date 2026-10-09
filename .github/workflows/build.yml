@@ -116,6 +116,7 @@ jobs:
         run: pnpm run make
 
       # --- macOS: Build signed .pkg and upload to App Store Connect ---
+      # --- macOS: Build signed .pkg and upload to App Store Connect ---
       - name: Build, sign, and upload macOS package to App Store Connect
         if: ${{ inputs.publish_release && matrix.target == 'macOS' }}
         env:
@@ -125,7 +126,7 @@ jobs:
           APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
           APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
         run: |
-          # 1. Create temporary keychain and import the distribution certificate
+          # 1. Create temporary keychain and import certificates
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
           KEYCHAIN_PASSWORD=$(uuidgen)
           CERT_FILE=$RUNNER_TEMP/cert.p12
@@ -147,17 +148,15 @@ jobs:
           fi
           echo "Found app bundle at: $APP_PATH"
 
-          # 3. Find the signing identity from the imported certificate
-          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -o '"Apple Distribution: [^"]*"' | head -n 1 | tr -d '"')
-          if [ -z "$SIGNING_IDENTITY" ]; then
-            SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -o '"3rd Party Mac Developer Installer: [^"]*"' | head -n 1 | tr -d '"')
-          fi
+          # 3. Find the INSTALLER signing identity (required by productbuild)
+          INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep -o '"3rd Party Mac Developer Installer: [^"]*"' | head -n 1 | tr -d '"')
 
-          if [ -z "$SIGNING_IDENTITY" ]; then
-            echo "::error::No matching Apple Distribution signing identity found in keychain"
+          if [ -z "$INSTALLER_IDENTITY" ]; then
+            echo "::error::Could not find '3rd Party Mac Developer Installer' certificate in keychain. Ensure your .p12 includes the Mac Installer Distribution certificate."
+            security find-identity -v "$KEYCHAIN_PATH"
             exit 1
           fi
-          echo "Using signing identity: $SIGNING_IDENTITY"
+          echo "Using installer signing identity: $INSTALLER_IDENTITY"
 
           # 4. Build and sign the .pkg into out/make
           mkdir -p out/make
@@ -165,11 +164,11 @@ jobs:
 
           productbuild \
             --component "$APP_PATH" /Applications \
-            --sign "$SIGNING_IDENTITY" \
+            --sign "$INSTALLER_IDENTITY" \
             --keychain "$KEYCHAIN_PATH" \
             "$PKG_PATH"
 
-          # 5. Setup App Store Connect API Key
+          # 5. Setup App Store Connect API Key (.p8)
           mkdir -p ~/.appstoreconnect/private_keys
           KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
 
@@ -179,7 +178,7 @@ jobs:
             echo "$APPLE_API_PRIVATE_KEY" | base64 --decode > "$KEY_PATH"
           fi
 
-          # Clean up private key and keychain on exit
+          # Clean up private key and keychain on step exit
           trap 'rm -f "$KEY_PATH"; security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true' EXIT
 
           # 6. Validate and upload package to App Store Connect
