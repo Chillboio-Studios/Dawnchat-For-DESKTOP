@@ -11,28 +11,22 @@ import fs from "node:fs";
 import path from "node:path";
 import packageJson from "./package.json";
 
-// import { globSync } from "node:fs";
-
 const STRINGS = {
   author: "Chillboio Studios",
   name: "DawnChat",
   execName: "dawnchat-desktop",
   description: "User-first chat platform.",
+  appId: "com.chillboiostudios.dawnchat", // Defined once for reuse
 };
 
 const ASSET_DIR = "assets/desktop";
 const PACKAGER_VERSION = packageJson.version;
 
-/**
- * Build targets for the desktop app
- */
 const makers: ForgeConfig["makers"] = [
   new MakerSquirrel({
     name: STRINGS.name,
     authors: STRINGS.author,
-    // todo: hoist this
     iconUrl: `https://app.dawn-chat.com/favicon.ico`,
-    // todo: loadingGif
     setupIcon: `${ASSET_DIR}/icon.ico`,
     description: STRINGS.description,
     exe: `${STRINGS.execName}.exe`,
@@ -42,7 +36,7 @@ const makers: ForgeConfig["makers"] = [
   new MakerZIP({}),
   new MakerFlatpak({
     options: {
-      id: "com.dawnchat.DawnChatDesktop",
+      id: STRINGS.appId, // Updated to match com.chillboiostudios.dawnchat
       description: STRINGS.description,
       productName: STRINGS.name,
       productDescription: STRINGS.description,
@@ -57,7 +51,6 @@ const makers: ForgeConfig["makers"] = [
       } as unknown,
       categories: ["Network"],
       modules: [
-        // use the latest zypak -- Electron sandboxing for Flatpak
         {
           name: "zypak",
           sources: [
@@ -70,8 +63,6 @@ const makers: ForgeConfig["makers"] = [
         },
       ],
       finishArgs: [
-        // default arguments found by running
-        // DEBUG=electron-installer-flatpak* pnpm make
         "--socket=fallback-x11",
         "--socket=wayland",
         "--share=ipc",
@@ -104,22 +95,19 @@ const config: ForgeConfig = {
     executableName: STRINGS.execName,
     appVersion: PACKAGER_VERSION,
     buildVersion: PACKAGER_VERSION,
-    icon:
-      process.platform === "darwin"
-        ? `${ASSET_DIR}/icon.icon`
-        : `${ASSET_DIR}/icon`,
-    // extraResource: [
-    //   // include all the asset files
-    //   ...globSync(ASSET_DIR + "/**/*"),
-    // ],
+
+    // 👇 Sets the CFBundleIdentifier on macOS (and helpers)
+    appBundleId: STRINGS.appId,
+    helperBundleId: `${STRINGS.appId}.helper`,
+
+    // Electron Packager automatically appends .icns / .ico if given without an extension
+    icon: `${ASSET_DIR}/icon`,
   },
   rebuildConfig: {},
   makers,
   hooks: {
-    // Copy the node-pipewire dist to the app on linux
     packageAfterCopy: async (_config, buildPath, _version, platform) => {
       if (platform === "linux") {
-        // Copy only the files we need to run the code, which is dist, LICENSE, and package.json
         fs.cpSync(
           "node_modules/node-pipewire/dist",
           path.join(buildPath, "node_modules/node-pipewire/dist"),
@@ -144,11 +132,8 @@ const config: ForgeConfig = {
       config: {},
     },
     new VitePlugin({
-      // `build` can specify multiple entry builds, which can be Main process, Preload scripts, Worker process, etc.
-      // If you are familiar with Vite configuration, it will look really familiar.
       build: [
         {
-          // `entry` is just an alias for `build.lib.entry` in the corresponding file of `config`.
           entry: "src/main.ts",
           config: "vite.main.config.ts",
           target: "main",
@@ -161,8 +146,6 @@ const config: ForgeConfig = {
       ],
       renderer: [],
     }),
-    // Fuses are used to enable/disable various Electron functionality
-    // at package time, before code signing the application
     new FusesPlugin({
       version: FuseVersion.V1,
       [FuseV1Options.RunAsNode]: false,
